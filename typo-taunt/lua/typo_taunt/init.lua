@@ -18,6 +18,8 @@ M.config = {
   spell_filetypes = { "markdown", "text", "gitcommit" },
   -- タイポへ飛ぶキー（false にすると割り当てない）
   keys = { next = "]t", prev = "[t" },
+  -- 保存後、linter の結果が変わらないときに待つ最大の時間（ミリ秒）
+  max_wait = 2000,
 }
 
 local function notify(count)
@@ -42,16 +44,36 @@ end
 -- 1. すでに入っている linter が出した diagnostic からタイポを探す
 local function find_from_diagnostics(bufnr)
   local found = {}
+  local seen = {}
   for _, d in ipairs(vim.diagnostic.get(bufnr)) do
     local source = (d.source or ""):lower()
     for _, name in ipairs(M.config.diagnostic_sources) do
-      if source:find(name, 1, true) then
+      -- 同じ場所の指摘が重なっていたら 1 つとして数える
+      local key = d.lnum .. ":" .. d.col
+      if source:find(name, 1, true) and not seen[key] then
+        seen[key] = true
         table.insert(found, { lnum = d.lnum, col = d.col })
         break
       end
     end
   end
   return found
+end
+
+-- linter の結果が変わったかを比べるための目印（場所と内容をつなげた文字列）
+local function diagnostics_signature(bufnr)
+  local parts = {}
+  for _, d in ipairs(vim.diagnostic.get(bufnr)) do
+    local source = (d.source or ""):lower()
+    for _, name in ipairs(M.config.diagnostic_sources) do
+      if source:find(name, 1, true) then
+        table.insert(parts, d.lnum .. ":" .. d.col .. ":" .. (d.message or ""))
+        break
+      end
+    end
+  end
+  table.sort(parts)
+  return table.concat(parts, "\n")
 end
 
 -- 2. typos コマンド（typos-cli）が入っていれば、それで探す
@@ -181,17 +203,53 @@ end
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
   local group = vim.api.nvim_create_augroup("TypoTaunt", { clear = true })
+
+  -- 保存したあと、linter の結果がまだ届いていないバッファの情報
+  -- { gen = 何回目の待ちか, signature = 保存した時点の linter の結果 }
+  local waiting = {}
+
+  local function finish(bufnr, gen)
+    local w = waiting[bufnr]
+    if not w or w.gen ~= gen then
+      return
+    end
+    waiting[bufnr] = nil
+    if vim.api.nvim_buf_is_valid(bufnr) then
+      M.check(bufnr)
+    end
+  end
+
   vim.api.nvim_create_autocmd("BufWritePost", {
     group = group,
     callback = function(args)
-      -- linter が保存直後に diagnostic を更新するのを少し待ってから調べる
+      local bufnr = args.buf
+      local gen = (waiting[bufnr] and waiting[bufnr].gen or 0) + 1
+      waiting[bufnr] = { gen = gen, signature = diagnostics_signature(bufnr) }
+      -- linter の結果が変わらないまま時間が過ぎたら、今の結果で数える
       vim.defer_fn(function()
-        if vim.api.nvim_buf_is_valid(args.buf) then
-          M.check(args.buf)
-        end
-      end, 500)
+        finish(bufnr, gen)
+      end, M.config.max_wait)
     end,
   })
+
+  -- linter が新しい結果を出したら、その結果で数える
+  vim.api.nvim_create_autocmd("DiagnosticChanged", {
+    group = group,
+    callback = function(args)
+      local bufnr = args.buf
+      local w = waiting[bufnr]
+      if not w or diagnostics_signature(bufnr) == w.signature then
+        return
+      end
+      w.gen = w.gen + 1
+      local gen = w.gen
+      -- 結果が続けて届くことがあるので、少し落ち着くのを待つ
+      vim.defer_fn(function()
+        finish(bufnr, gen)
+      end, 300)
+    end,
+  })
+
   if M.config.keys then
     if M.config.keys.next then
       vim.keymap.set("n", M.config.keys.next, function()

@@ -4,7 +4,7 @@ Neovim で `:w` 保存したときにタイポを見つけると、「タイポ�
 
 ## しくみ
 
-保存すると、次の順番でタイポを数えます。最初に見つかった方法の結果を使います。
+保存すると、linter（cspell など）が新しい結果を出すのを待ってから、次の順番でタイポを数えます。最初に見つかった方法の結果を使います。
 
 1. すでに入っている linter の結果（diagnostic）のうち、`cspell`・`typos`・`codespell`・`misspell` が出したもの
 2. `typos` コマンド（typos-cli）が入っていれば、その結果
@@ -58,5 +58,6 @@ opts = {
   voice = true,                 -- 読み上げるかどうか
   say_voice = "Kyoko",          -- macOS の声
   keys = { next = "]t", prev = "[t" },  -- タイポへ飛ぶキー（false で割り当てない）
+  max_wait = 2000,              -- 保存後、linter の結果を待つ最大の時間（ミリ秒）
 }
 ```
