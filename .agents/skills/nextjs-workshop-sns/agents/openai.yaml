@@ -1,0 +1,4 @@
+interface:
+  display_name: "Next.js SNSワークショップ"
+  short_description: "初心者向けNext.js SNSアプリ制作をやさしく伴走"
+  default_prompt: "Use $nextjs-workshop-sns to help me build a beginner-friendly Next.js SNS-style app for a workshop."
