@@ -2,8 +2,10 @@
 local M = {}
 
 M.config = {
-  -- 煽りのセリフ
+  -- 通知に出す煽りのセリフ
   message = "タイポの達人♪",
+  -- 音声で読み上げるセリフ（♪ は読まない）
+  speech = "タイポの達人",
   -- 音声で話すかどうか
   voice = true,
   -- macOS の say で使う声（日本語の声）
@@ -25,11 +27,11 @@ local function notify(count)
   end
   if vim.fn.executable("say") == 1 then
     -- macOS の音声合成
-    vim.fn.jobstart({ "say", "-v", M.config.say_voice, M.config.message })
+    vim.fn.jobstart({ "say", "-v", M.config.say_voice, M.config.speech })
   elseif vim.fn.executable("spd-say") == 1 then
-    vim.fn.jobstart({ "spd-say", "-l", "ja", M.config.message })
+    vim.fn.jobstart({ "spd-say", "-l", "ja", M.config.speech })
   elseif vim.fn.executable("espeak") == 1 then
-    vim.fn.jobstart({ "espeak", "-v", "ja", M.config.message })
+    vim.fn.jobstart({ "espeak", "-v", "ja", M.config.speech })
   end
 end
 
